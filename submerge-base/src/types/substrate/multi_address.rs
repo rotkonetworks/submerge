@@ -2,10 +2,11 @@ use std::str::FromStr;
 
 use parity_scale_codec::{Decode, Encode};
 use serde::Serialize;
+use utoipa::ToSchema;
 
 use crate::types::substrate::account_id::AccountId;
 
-#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Serialize)]
+#[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "type", content = "value")]
 pub enum MultiAddress {
     #[serde(rename = "accountId")]

@@ -11,7 +11,7 @@ use submerge_base::BaseService;
 use submerge_persistence::postgres::PostgreSQLStorage;
 use submerge_substrate_client::RPCConfig;
 
-mod api;
+pub mod api;
 pub mod args;
 mod metrics;
 mod persistence;

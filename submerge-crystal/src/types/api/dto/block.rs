@@ -4,6 +4,7 @@ use parity_scale_codec::Decode as _;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JSONValue;
 use submerge_base::types::substrate::multi_address::MultiAddress;
+use utoipa::ToSchema;
 
 use crate::types::{api::dto::pagination::PaginationQuery, persistence::BlockRow, BlockStatus};
 
@@ -52,7 +53,7 @@ impl BlockQuery {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockDTO {
     pub hash: String,

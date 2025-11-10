@@ -18,6 +18,11 @@ use crate::{
 const DEFAULT_PAGE_SIZE: u64 = 50;
 const MAX_PAGE_SIZE: u64 = 100;
 
+#[utoipa::path(
+    get,
+    path = "/blocks",
+    responses((status = 200, body = PagedResponse<BlockDTO>))
+)]
 pub(crate) async fn get_blocks(
     State(state): State<ServiceState>,
     Query(query): Query<BlockQuery>,

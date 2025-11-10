@@ -44,7 +44,7 @@ use tokio::signal;
 use tower_http::cors::{Any, CorsLayer};
 
 pub mod legacy;
-mod v1;
+pub mod v1;
 
 const MAX_RESPONSE_MESSAGE_BYTES: usize = 64 * 1024;
 
@@ -281,3 +281,11 @@ pub(crate) async fn run_api(
     server_result?;
     Ok(())
 }
+
+use crate::types::api::dto::block::BlockDTO;
+use crate::types::api::dto::pagination::PaginationData;
+use crate::types::api::dto::pagination::PagedResponse;
+
+#[derive(utoipa::OpenApi)]
+#[openapi(paths(crate::api::v1::block::get_blocks), components(schemas(BlockDTO, PaginationData, PagedResponse<BlockDTO>)))]
+pub struct APIDoc;
