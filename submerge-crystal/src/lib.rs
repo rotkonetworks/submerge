@@ -140,6 +140,8 @@ impl BaseService for Crystal {
             retry_delay: Duration::from_secs(self.args.service.recovery_sleep_seconds),
             skip_traces: true,
             stop_on_error: false,
+            fetch_concurrency: self.args.fetch_concurrency,
+            concurrent_threshold: self.args.concurrent_threshold,
         };
         self.print_summary(&chainspec);
         self.migrate_db().await?;

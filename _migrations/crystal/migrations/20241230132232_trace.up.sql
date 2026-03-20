@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS trace
     hash                        BYTEA GENERATED ALWAYS AS (
         digest(
             block_hash ||
-            index::bytea,
+            int4send(index),
             'sha256'
         )
     ) STORED,

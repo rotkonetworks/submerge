@@ -1,7 +1,7 @@
 use axum::Router;
 use axum_embed::ServeEmbed;
 
-#[derive(Clone, rust_embed::Embed)]
+#[derive(Clone, rust_embed::RustEmbed)]
 #[folder = "./admin/dist"]
 struct Admin;
 

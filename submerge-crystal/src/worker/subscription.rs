@@ -15,6 +15,8 @@ async fn on_finalized_block(
     processor: Arc<BlockProcessor>,
     header: BlockHeader,
     skip_traces: bool,
+    fetch_concurrency: usize,
+    concurrent_threshold: u64,
 ) -> anyhow::Result<()> {
     let finalized_block_number = header.get_number()?;
     crate::metrics::target_finalized_block_number()?
@@ -30,46 +32,66 @@ async fn on_finalized_block(
         if gap > 1 {
             start_block_number = last_finalized_number + 1;
             tracing::info!(
-                "🟦 Process finalized block range {start_block_number}-{finalized_block_number}."
+                "🟦 Process finalized block range {start_block_number}-{finalized_block_number} (gap: {gap})."
             );
         } else {
             tracing::info!("🟦 Process finalized block {finalized_block_number}.");
         }
     }
 
-    for block_number in start_block_number..=finalized_block_number {
-        let Some(hash_hex) = processor.get_block_hash_hex(block_number).await? else {
-            anyhow::bail!("New finalized block {block_number} not found on the RPC node.");
-        };
-        let hash_bytes = hex::decode(&hash_hex)?;
-        match processor
-            .process_block(
+    let range_size = finalized_block_number.saturating_sub(start_block_number) + 1;
+
+    // Use concurrent fetching for large gaps (catching up), sequential for small gaps (live)
+    if range_size > concurrent_threshold {
+        tracing::info!(
+            "⚡ Using concurrent fetching for {range_size} blocks ({start_block_number}-{finalized_block_number}), concurrency: {fetch_concurrency}."
+        );
+        processor
+            .process_finalized_blocks_in_range_concurrent(
+                false,           // stop_on_error
                 skip_traces,
-                false,
-                &hash_hex,
-                block_number,
-                BlockStatus::Finalized,
+                false,           // scan
+                false,           // reindex
+                Some(start_block_number),
+                Some(finalized_block_number),
+                Some(fetch_concurrency),
             )
-            .await
-        {
-            Ok(_) => {
-                postgres
-                    .set_last_indexed_finalized_block_number_and_hash(block_number, &hash_bytes)
-                    .await?;
-                crate::metrics::processed_finalized_block_number()?
-                    .with_label_values([&worker_id, "finalized_subscription"].as_slice())
-                    .set(block_number as i64);
-            }
-            Err(error) => {
-                processor
-                    .save_block_error(
-                        &hash_bytes,
-                        block_number,
-                        BlockStatus::Finalized,
-                        &error.to_string(),
-                    )
-                    .await?;
-                return Err(error);
+            .await?;
+    } else {
+        for block_number in start_block_number..=finalized_block_number {
+            let Some(hash_hex) = processor.get_block_hash_hex(block_number).await? else {
+                anyhow::bail!("New finalized block {block_number} not found on the RPC node.");
+            };
+            let hash_bytes = hex::decode(&hash_hex)?;
+            match processor
+                .process_block(
+                    skip_traces,
+                    false,
+                    &hash_hex,
+                    block_number,
+                    BlockStatus::Finalized,
+                )
+                .await
+            {
+                Ok(_) => {
+                    postgres
+                        .set_last_indexed_finalized_block_number_and_hash(block_number, &hash_bytes)
+                        .await?;
+                    crate::metrics::processed_finalized_block_number()?
+                        .with_label_values([&worker_id, "finalized_subscription"].as_slice())
+                        .set(block_number as i64);
+                }
+                Err(error) => {
+                    processor
+                        .save_block_error(
+                            &hash_bytes,
+                            block_number,
+                            BlockStatus::Finalized,
+                            &error.to_string(),
+                        )
+                        .await?;
+                    return Err(error);
+                }
             }
         }
     }
@@ -146,6 +168,46 @@ impl super::Worker {
             }
         };
 
+        // Catch-up phase: if there's a large gap between last indexed and current head,
+        // use concurrent fetching to close it before subscribing to live blocks.
+        if block_status == BlockStatus::Finalized {
+            let finalized_hash = substrate_client.get_finalized_block_hash().await?;
+            let finalized_header = substrate_client.get_block_header(&finalized_hash).await?;
+            let current_head = finalized_header.get_number()?;
+            let last_indexed = match self.config.postgres
+                .get_last_indexed_finalized_block_number_and_hash()
+                .await?
+            {
+                Some((n, _)) => n,
+                None => {
+                    // crystal_state is empty; fall back to the actual block table frontier
+                    self.config.postgres
+                        .get_max_block_number_by_status(BlockStatus::Finalized)
+                        .await?
+                        .unwrap_or(0)
+                }
+            };
+            let gap = current_head.saturating_sub(last_indexed);
+            if gap > self.config.concurrent_threshold {
+                tracing::info!(
+                    "⚡ Catch-up: {} blocks behind (last: {}, head: {}). Running concurrent backfill with concurrency {}.",
+                    gap, last_indexed, current_head, self.config.fetch_concurrency
+                );
+                block_processor
+                    .process_finalized_blocks_in_range_concurrent(
+                        false,
+                        skip_traces,
+                        false,
+                        false,
+                        Some(last_indexed + 1),
+                        Some(current_head),
+                        Some(self.config.fetch_concurrency),
+                    )
+                    .await?;
+                tracing::info!("✅ Catch-up complete. Switching to live subscription.");
+            }
+        }
+
         let subscription_timeout =
             Duration::from_secs(self.config.rpc_config.rpc_subscription_timeout_secs);
         match block_status {
@@ -196,6 +258,8 @@ impl super::Worker {
                                 let worker_id = self.id.to_string();
                                 let postgres = self.config.postgres.clone();
                                 let header = header.clone();
+                                let fetch_concurrency = self.config.fetch_concurrency;
+                                let concurrent_threshold = self.config.concurrent_threshold;
                                 tokio::spawn(async move {
                                     // hold permit for the entire task duration
                                     let _permit_guard = permit;
@@ -205,6 +269,8 @@ impl super::Worker {
                                         processor,
                                         header,
                                         skip_traces,
+                                        fetch_concurrency,
+                                        concurrent_threshold,
                                     )
                                     .await;
                                     if let Err(e) = result {

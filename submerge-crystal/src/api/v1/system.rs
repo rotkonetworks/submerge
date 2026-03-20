@@ -39,6 +39,8 @@ pub(crate) async fn spawn_worker(State(state): State<ServiceState>) {
                 retry_delay: std::time::Duration::from_secs(5),
                 skip_traces: true,
                 stop_on_error: true,
+                fetch_concurrency: 100,
+                concurrent_threshold: 10,
             },
         )
         .await;

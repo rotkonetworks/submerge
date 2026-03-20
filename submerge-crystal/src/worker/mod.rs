@@ -50,6 +50,8 @@ pub(crate) struct WorkerConfig {
     pub retry_delay: Duration,
     pub skip_traces: bool,
     pub stop_on_error: bool,
+    pub fetch_concurrency: usize,
+    pub concurrent_threshold: u64,
 }
 
 #[allow(dead_code)]

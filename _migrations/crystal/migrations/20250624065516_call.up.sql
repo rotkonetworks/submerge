@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS call
         digest(
             block_hash ||
             extrinsic_hash ||
-            call_path::bytea,
+            immutable_textsend(call_path),
             'sha256'
         )
     ) STORED,

@@ -30,4 +30,12 @@ pub struct Args {
     /// Default RPC node URL for workers
     #[arg(long)]
     pub default_rpc_url: String,
+
+    /// Max concurrent block fetches during catch-up (default: 100)
+    #[arg(long, default_value = "100")]
+    pub fetch_concurrency: usize,
+
+    /// Minimum block gap before switching to concurrent mode (default: 10)
+    #[arg(long, default_value = "10")]
+    pub concurrent_threshold: u64,
 }

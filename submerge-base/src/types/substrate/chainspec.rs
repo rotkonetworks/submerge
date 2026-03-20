@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::substrate::chain::Chain;
 
-#[derive(rust_embed::Embed)]
+#[derive(rust_embed::RustEmbed)]
 #[folder = "../_chainspecs"]
 #[include = "*.json"]
 struct Chainspecs;

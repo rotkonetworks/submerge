@@ -59,6 +59,10 @@ pub(crate) trait CrystalPostgreSQLStorage {
     async fn get_metadata_storage_item_id(&self, pallet_id: u32, index: u8) -> anyhow::Result<u32>;
     async fn get_genesis_record_count(&self) -> anyhow::Result<u64>;
     async fn ingest_genesis(&self, genesis_items: &[GenesisItem]) -> anyhow::Result<()>;
+    async fn get_max_block_number_by_status(
+        &self,
+        status: BlockStatus,
+    ) -> anyhow::Result<Option<u64>>;
     async fn get_next_block_number(
         &self,
         min: u64,
@@ -481,6 +485,19 @@ impl CrystalPostgreSQLStorage for PostgreSQLStorage {
         }
         tx.commit().await?;
         Ok(())
+    }
+
+    async fn get_max_block_number_by_status(
+        &self,
+        status: BlockStatus,
+    ) -> anyhow::Result<Option<u64>> {
+        let row: (Option<i64>,) = sqlx::query_as(
+            "SELECT MAX(number) FROM block WHERE status = $1",
+        )
+        .bind(status)
+        .fetch_one(&self.connection_pool)
+        .await?;
+        Ok(row.0.map(|n| n as u64))
     }
 
     async fn get_next_block_number(
